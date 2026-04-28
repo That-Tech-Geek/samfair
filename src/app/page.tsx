@@ -189,6 +189,28 @@ export default function Home() {
             )}
           </div>
         </div>
+
+        {/* Offline Mock Data Section for Evaluators */}
+        <div className="mt-8 p-6 bg-white/5 backdrop-blur-lg rounded-2xl border border-blue-500/20 animate-in fade-in">
+          <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+            <span className="bg-blue-500/20 text-blue-400 text-xs px-2 py-0.5 rounded border border-blue-500/30">EVALUATOR RESOURCES</span>
+            Offline Batch Audit Mockups
+          </h3>
+          <p className="text-sm text-gray-400 mb-4">
+            Test the native SamFair bulk-processing library locally. Download the synthetic golden dataset and the simulated biased model predictions, or view the generated DPIA report.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <a href="/mockups/mock_golden_set.csv" download className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all">
+              ↓ mock_golden_set.csv
+            </a>
+            <a href="/mockups/mock_model_output.csv" download className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all">
+              ↓ mock_model_output.csv
+            </a>
+            <a href="/mockups/offline_audit_report.pdf" target="_blank" rel="noreferrer" className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all">
+              📄 View Offline DPIA Report
+            </a>
+          </div>
+        </div>
       </main>
     </div>
   );
