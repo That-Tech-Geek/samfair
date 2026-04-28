@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
@@ -28,6 +28,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+api_router = APIRouter(prefix="/api")
+
 class DiscoverRequest(BaseModel):
     url: str
     credentials: dict = None
@@ -41,15 +43,14 @@ class RemediateRequest(BaseModel):
     weight: float
     seed: int
 
-@app.post("/discover")
+@api_router.post("/discover")
 async def discover(req: DiscoverRequest):
     logger.info(f"Discovering AEDTs at {req.url}")
     tools = await discover_aedts(req.url)
     return {"aedts": tools}
 
-@app.post("/audit")
+@api_router.post("/audit")
 async def run_audit(req: AuditRequest):
-    # Stateless logic: Use provided seed or generate one
     seed = req.seed if req.seed is not None else random.randint(1, 1000000)
     logger.info(f"Running audit with seed {seed}")
     
@@ -85,10 +86,10 @@ async def run_audit(req: AuditRequest):
         "seed": seed,
         "audit_results": results_df.to_dict(orient='records'),
         "ppnl": ppnl_output,
-        "report_path": "/download_report"
+        "report_path": "/api/download_report"
     }
 
-@app.post("/remediate")
+@api_router.post("/remediate")
 async def run_remediate(req: RemediateRequest):
     logger.info(f"Running remediation for feature {req.feature} with weight {req.weight} (seed: {req.seed})")
     import numpy as np
@@ -116,12 +117,14 @@ async def run_remediate(req: RemediateRequest):
         "audit_results": results_df.to_dict(orient='records')
     }
 
-@app.get("/download_report")
+@api_router.get("/download_report")
 async def download_report():
     report_path = os.path.join(os.getcwd(), "samfair_audit_report.pdf")
     if os.path.exists(report_path):
         return FileResponse(report_path, filename="SamFair_DPIA_Report.pdf")
     raise HTTPException(status_code=404, detail="Report not found")
+
+app.include_router(api_router)
 
 @app.get("/mock_hr.html", response_class=HTMLResponse)
 async def serve_mock_hr():

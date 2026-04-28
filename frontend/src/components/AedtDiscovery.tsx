@@ -9,7 +9,7 @@ export default function AedtDiscovery({ onDiscovered }: { onDiscovered: (aedts: 
   const handleScan = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/discover", {
+      const res = await fetch("/api/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, credentials: {} }),

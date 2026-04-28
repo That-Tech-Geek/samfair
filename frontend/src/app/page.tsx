@@ -39,7 +39,7 @@ export default function Home() {
     setShowPpnl(false);
     const toastId = toast.loading("Running 4/5ths Bias Audit...");
     try {
-      const res = await fetch("http://localhost:8000/audit", {
+      const res = await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ aedt_endpoint: selectedAedt }),
@@ -82,7 +82,7 @@ export default function Home() {
     
     const toastId = toast.loading(`Remediating ${feature}...`);
     try {
-      const res = await fetch("http://localhost:8000/remediate", {
+      const res = await fetch("/api/remediate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ feature, weight, seed: currentSeed }),
@@ -99,7 +99,7 @@ export default function Home() {
 
   const handleDownload = () => {
     toast.success("Downloading DPIA Report...");
-    window.location.href = "http://localhost:8000/download_report";
+    window.location.href = "/api/download_report";
   };
 
   return (
