@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="samfair",
-    version="0.1.1",
+    version="0.1.2",
     packages=find_packages(),
     install_requires=[
         "pandas",
@@ -14,7 +14,7 @@ setup(
     ],
     author="Hackathon Team",
     description="SamFair: Algorithmic bias audit and Post-Prediction Neural Linking library",
-    long_description=open("README.md", "r").read() if True else "",
+    long_description=open("README.md", "r", encoding="utf-8").read() if True else "",
     long_description_content_type="text/markdown",
     url="https://github.com/samfair/samfair",
     classifiers=[
