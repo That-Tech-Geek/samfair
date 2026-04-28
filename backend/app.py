@@ -1,10 +1,12 @@
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 import joblib
 import pandas as pd
 import os
+import random
+import logging
 
 from samfair_lib.discovery import discover_aedts
 from samfair_lib.synthetic_data import generate_golden_set
@@ -13,7 +15,10 @@ from samfair_lib.ppnl import explain_bias
 from samfair_lib.reports import generate_report
 from samfair_lib.evidence import log_audit
 
-app = FastAPI(title="SamFair API")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="SamFair API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,21 +34,29 @@ class DiscoverRequest(BaseModel):
 
 class AuditRequest(BaseModel):
     aedt_endpoint: str
+    seed: int = None
 
 class RemediateRequest(BaseModel):
     feature: str
     weight: float
-
-# In-memory storage for hackathon simplicity (to share df between /audit and /remediate)
-session_data = {}
+    seed: int
 
 @app.post("/discover")
 async def discover(req: DiscoverRequest):
+    logger.info(f"Discovering AEDTs at {req.url}")
     tools = await discover_aedts(req.url)
     return {"aedts": tools}
 
 @app.post("/audit")
 async def run_audit(req: AuditRequest):
+    # Stateless logic: Use provided seed or generate one
+    seed = req.seed if req.seed is not None else random.randint(1, 1000000)
+    logger.info(f"Running audit with seed {seed}")
+    
+    import numpy as np
+    np.random.seed(seed)
+    random.seed(seed)
+    
     df = generate_golden_set(1000)
     features = ['name_feat1', 'name_feat2', 'university_tier', 'pin_code_cluster', 'language_medium']
     X = df[features]
@@ -68,11 +81,8 @@ async def run_audit(req: AuditRequest):
     report_path = os.path.join(os.getcwd(), "samfair_audit_report.pdf")
     generate_report(results_df, ppnl_output, evidence_hash, report_path)
     
-    # Store for remediation
-    session_data['df'] = df
-    session_data['model'] = model
-    
     return {
+        "seed": seed,
         "audit_results": results_df.to_dict(orient='records'),
         "ppnl": ppnl_output,
         "report_path": "/download_report"
@@ -80,13 +90,20 @@ async def run_audit(req: AuditRequest):
 
 @app.post("/remediate")
 async def run_remediate(req: RemediateRequest):
-    if 'df' not in session_data:
-        raise HTTPException(status_code=400, detail="Run audit first.")
-        
-    df = session_data['df']
-    model = session_data['model']
+    logger.info(f"Running remediation for feature {req.feature} with weight {req.weight} (seed: {req.seed})")
+    import numpy as np
+    np.random.seed(req.seed)
+    random.seed(req.seed)
+    
+    df = generate_golden_set(1000)
     features = ['name_feat1', 'name_feat2', 'university_tier', 'pin_code_cluster', 'language_medium']
     X = df[features].copy()
+    
+    model_path = "biased_model.joblib"
+    if not os.path.exists(model_path):
+        raise HTTPException(status_code=500, detail="Biased model not found.")
+        
+    model = joblib.load(model_path)
     
     if req.feature in X.columns:
         mean_val = X[req.feature].mean()
@@ -104,7 +121,7 @@ async def download_report():
     report_path = os.path.join(os.getcwd(), "samfair_audit_report.pdf")
     if os.path.exists(report_path):
         return FileResponse(report_path, filename="SamFair_DPIA_Report.pdf")
-    return {"error": "Report not found"}
+    raise HTTPException(status_code=404, detail="Report not found")
 
 @app.get("/mock_hr.html", response_class=HTMLResponse)
 async def serve_mock_hr():
@@ -112,4 +129,4 @@ async def serve_mock_hr():
     if os.path.exists(path):
         with open(path, "r") as f:
             return f.read()
-    return "<h1>Mock HR File Not Found</h1>"
+    raise HTTPException(status_code=404, detail="Mock HR page not found")
