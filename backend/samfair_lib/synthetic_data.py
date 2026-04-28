@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
-from uuid import uuid4
 import random
+from uuid import uuid4
 
 try:
     from faker import Faker
@@ -10,57 +10,57 @@ except ImportError:
     fake = None
 
 def generate_golden_set(n=1000):
-    np.random.seed(42)
-    random.seed(42)
+    np.random.seed(123)
+    random.seed(123)
     data = []
     
-    genders = ['Male', 'Female']
-    religions = ['Hindu', 'Muslim', 'Sikh', 'Christian', 'Buddhist', 'Jain']
-    caste_proxies = ['General', 'OBC', 'SC', 'ST']
-    caste_probs = [0.4, 0.3, 0.15, 0.15]
-    
-    universities = ['IIT Bombay', 'Delhi University', 'Amity University', 'LPU', 'Tier 3 Local College']
-    
     for _ in range(n):
-        gender = np.random.choice(genders)
-        religion = np.random.choice(religions)
-        caste_indicator = np.random.choice(caste_proxies, p=caste_probs)
+        gender = np.random.choice(['Male', 'Female'])
+        religion = np.random.choice(['Hindu', 'Muslim', 'Sikh', 'Christian', 'Buddhist', 'Jain'])
+        caste_indicator = np.random.choice(['General', 'OBC', 'SC', 'ST'], p=[0.4, 0.3, 0.15, 0.15])
         
-        # Correlate features with protected attributes
-        first_name = fake.first_name_male() if fake and gender == 'Male' else (fake.first_name_female() if fake else f"User{random.randint(100,999)}")
-        
-        last_name = fake.last_name() if fake else "Doe"
-        if caste_indicator == 'SC':
-            last_name = random.choice(['Jatav', 'Paswan', 'Valmiki'])
-            pin_code = str(random.choice([201001, 202002, 282001])) # Starting with 2
-            uni_tier = random.choice([3, 4])
-        elif caste_indicator == 'ST':
-            last_name = random.choice(['Munda', 'Meena', 'Bhil'])
-            pin_code = str(random.choice([492001, 493001, 834001]))
-            uni_tier = random.choice([3, 4])
-        elif religion == 'Muslim':
-            last_name = random.choice(['Khan', 'Ali', 'Ahmed', 'Syed'])
-            pin_code = str(random.choice([110006, 110025, 400003]))
-            uni_tier = random.choice([2, 3])
+        # Correlated features
+        if fake:
+            first_name = fake.first_name_male() if gender == 'Male' else fake.first_name_female()
+            last_name = fake.last_name()
         else:
-            pin_code = str(random.randint(400000, 800000))
-            uni_tier = random.choice([1, 2, 3])
+            first_name = f"User{random.randint(100,999)}"
+            last_name = "Doe"
             
-        university = "Tier 1" if uni_tier == 1 else "Tier 2" if uni_tier == 2 else "Tier 3" if uni_tier == 3 else "Tier 4"
+        name = f"{first_name} {last_name}"
+        name_feat1 = len(name)
+        name_feat2 = name.count('a') + name.count('A')
         
+        # Proxy assignments
+        if caste_indicator == 'SC':
+            pin_code = str(np.random.choice([201001, 202002, 282001])) # starts with 2
+            pin_code_cluster = np.random.choice([0, 1], p=[0.7, 0.3])
+            university_tier = np.random.choice([2, 3], p=[0.3, 0.7])
+            language_medium = np.random.choice([0, 1], p=[0.6, 0.4]) # 0=Vernacular
+        elif caste_indicator == 'ST':
+            pin_code = str(np.random.choice([292001, 293001]))
+            pin_code_cluster = np.random.choice([0, 1], p=[0.6, 0.4])
+            university_tier = 3
+            language_medium = 0
+        else:
+            pin_code = str(np.random.randint(400000, 800000))
+            pin_code_cluster = np.random.choice([1, 2, 3], p=[0.2, 0.4, 0.4])
+            university_tier = np.random.choice([1, 2, 3], p=[0.3, 0.5, 0.2])
+            language_medium = np.random.choice([1, 2], p=[0.4, 0.6]) # English or Hindi
+
         data.append({
             'candidate_id': str(uuid4()),
-            'name': f"{first_name} {last_name}",
+            'name': name,
             'gender': gender,
             'religion': religion,
             'caste_indicator': caste_indicator,
-            'university_tier': uni_tier,
-            'university': university,
+            'name_feat1': name_feat1,
+            'name_feat2': name_feat2,
+            'university_tier': university_tier,
+            'pin_code_cluster': pin_code_cluster,
+            'language_medium': language_medium,
             'pin_code': pin_code,
-            'resume_text': f"Experienced candidate from {university}."
+            'resume_text': f"Experienced candidate with tier {university_tier} background."
         })
+        
     return pd.DataFrame(data)
-
-if __name__ == "__main__":
-    df = generate_golden_set(10)
-    print(df.head())

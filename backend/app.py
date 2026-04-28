@@ -9,13 +9,12 @@ import os
 from samfair_lib.discovery import discover_aedts
 from samfair_lib.synthetic_data import generate_golden_set
 from samfair_lib.audit import compute_adverse_impact
-from samfair_lib.ppnl import ppnl_explain
-from samfair_lib.reports import build_report
-from samfair_lib.evidence import log_evidence
+from samfair_lib.ppnl import explain_bias
+from samfair_lib.reports import generate_report
+from samfair_lib.evidence import log_audit
 
 app = FastAPI(title="SamFair API")
 
-# Setup CORS for the React frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,94 +29,87 @@ class DiscoverRequest(BaseModel):
 
 class AuditRequest(BaseModel):
     aedt_endpoint: str
-    feature_weights: dict = None  # For remediation
+
+class RemediateRequest(BaseModel):
+    feature: str
+    weight: float
+
+# In-memory storage for hackathon simplicity (to share df between /audit and /remediate)
+session_data = {}
 
 @app.post("/discover")
 async def discover(req: DiscoverRequest):
-    tools = await discover_aedts(req.url, req.credentials)
+    tools = await discover_aedts(req.url)
     return {"aedts": tools}
 
 @app.post("/audit")
 async def run_audit(req: AuditRequest):
-    # 1. Generate Golden Set
     df = generate_golden_set(1000)
+    features = ['name_feat1', 'name_feat2', 'university_tier', 'pin_code_cluster', 'language_medium']
+    X = df[features]
     
-    # 2. Extract features needed by the model
-    # We must match the features trained in biased_model.joblib:
-    # ['university_tier', 'pin_code_first_digit']
-    df['pin_code_first_digit'] = df['pin_code'].astype(str).str[0].astype(int)
-    X = df[['university_tier', 'pin_code_first_digit']]
-    
-    # 3. Load Model and Predict
     model_path = "biased_model.joblib"
     if not os.path.exists(model_path):
-        raise HTTPException(status_code=500, detail="Biased model not found. Run train_biased_model.py first.")
+        raise HTTPException(status_code=500, detail="Biased model not found. Run train_model.py first.")
         
     model = joblib.load(model_path)
+    predictions = model.predict(X)
     
-    # 3.1 Apply Remediation if provided
-    if req.feature_weights:
-        # Simplistic remediation: modify feature values based on slider weights before prediction
-        # Alternatively, we could adjust the probability threshold, but adjusting features simulates 
-        # removing the bias signal from the input data.
-        X_adj = X.copy()
-        if 'university_tier' in req.feature_weights:
-            # e.g., weight of 0 means ignore university_tier (set all to mean)
-            w = req.feature_weights['university_tier']
-            mean_val = X_adj['university_tier'].mean()
-            X_adj['university_tier'] = X_adj['university_tier'] * w + mean_val * (1 - w)
-        if 'pin_code' in req.feature_weights or 'pin_code_first_digit' in req.feature_weights:
-            w = req.feature_weights.get('pin_code_first_digit', req.feature_weights.get('pin_code', 1.0))
-            mean_val = X_adj['pin_code_first_digit'].mean()
-            X_adj['pin_code_first_digit'] = X_adj['pin_code_first_digit'] * w + mean_val * (1 - w)
-        predictions = model.predict(X_adj)
-    else:
-        predictions = model.predict(X)
-        
-    # 4. Audit Engine
-    protected_cols = ['gender', 'religion', 'caste_indicator']
-    results_df = compute_adverse_impact(df, predictions, protected_cols)
-    
-    # 5. PPNL
+    results_df = compute_adverse_impact(df, predictions)
     flagged = results_df[results_df['flagged']]
+    
     ppnl_output = None
     if not flagged.empty:
-        ppnl_output = ppnl_explain(df, predictions, flagged)
+        ppnl_output = explain_bias(df, predictions, flagged)
         
-    # 6. Evidence Logging
-    evidence_payload = {
-        "audit_run_id": str(pd.util.hash_pandas_object(df).sum()),
-        "flagged_count": len(flagged),
-        "ppnl_rule": ppnl_output['rule'] if ppnl_output else None
-    }
-    evidence_hash = log_evidence("AUDIT_RUN", evidence_payload)
+    run_id = str(pd.util.hash_pandas_object(df).sum())
+    evidence_hash = log_audit(run_id, df.head(10), predictions[:10], results_df, ppnl_output)
     
-    # 7. Report Generation
-    report_path = build_report(results_df, ppnl_output, evidence_hash)
+    report_path = os.path.join(os.getcwd(), "samfair_audit_report.pdf")
+    generate_report(results_df, ppnl_output, evidence_hash, report_path)
+    
+    # Store for remediation
+    session_data['df'] = df
+    session_data['model'] = model
     
     return {
         "audit_results": results_df.to_dict(orient='records'),
         "ppnl": ppnl_output,
-        "evidence_hash": evidence_hash,
-        "report_ready": bool(report_path)
+        "report_path": "/download_report"
     }
 
-@app.get("/download-report")
+@app.post("/remediate")
+async def run_remediate(req: RemediateRequest):
+    if 'df' not in session_data:
+        raise HTTPException(status_code=400, detail="Run audit first.")
+        
+    df = session_data['df']
+    model = session_data['model']
+    features = ['name_feat1', 'name_feat2', 'university_tier', 'pin_code_cluster', 'language_medium']
+    X = df[features].copy()
+    
+    if req.feature in X.columns:
+        mean_val = X[req.feature].mean()
+        X[req.feature] = X[req.feature] * req.weight + mean_val * (1 - req.weight)
+        
+    predictions = model.predict(X)
+    results_df = compute_adverse_impact(df, predictions)
+    
+    return {
+        "audit_results": results_df.to_dict(orient='records')
+    }
+
+@app.get("/download_report")
 async def download_report():
-    report_path = "samfair_audit_report.pdf"
+    report_path = os.path.join(os.getcwd(), "samfair_audit_report.pdf")
     if os.path.exists(report_path):
         return FileResponse(report_path, filename="SamFair_DPIA_Report.pdf")
     return {"error": "Report not found"}
 
-@app.get("/hr-dashboard", response_class=HTMLResponse)
-async def mock_hr_dashboard():
-    return """
-    <html>
-        <head><title>HR Dashboard</title></head>
-        <body>
-            <h1>Acme Corp HR Portal</h1>
-            <div data-aedt="Resume Screener AI" data-endpoint="http://localhost:8000/mock/predict"></div>
-            <div data-aedt="Video Interview Analyzer" data-endpoint="http://localhost:8000/mock/video"></div>
-        </body>
-    </html>
-    """
+@app.get("/mock_hr.html", response_class=HTMLResponse)
+async def serve_mock_hr():
+    path = "mock_hr.html"
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return f.read()
+    return "<h1>Mock HR File Not Found</h1>"

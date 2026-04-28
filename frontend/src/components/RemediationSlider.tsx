@@ -1,23 +1,18 @@
 "use client";
 import { useState } from "react";
 
-export default function RemediationSlider({ ppnl, onRemediate }: { ppnl: any, onRemediate: (weights: any) => void }) {
+export default function RemediationSlider({ ppnl, onRemediate }: { ppnl: any, onRemediate: (feature: string, weight: number) => void }) {
   if (!ppnl) return null;
 
-  // Initialize weights based on the top features found by PPNL
   const [weights, setWeights] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
-    Object.keys(ppnl.feature_contributions).forEach(k => {
-      init[k] = 1.0; // 1.0 means full weight (no remediation)
-    });
+    Object.keys(ppnl.feature_contributions).forEach(k => { init[k] = 1.0; });
     return init;
   });
 
   const handleSliderChange = (feat: string, val: number) => {
-    const newWeights = { ...weights, [feat]: val };
-    setWeights(newWeights);
-    // Debounce this in a real app, but for hackathon just call directly
-    onRemediate(newWeights);
+    setWeights({ ...weights, [feat]: val });
+    onRemediate(feat, val);
   };
 
   return (
@@ -30,8 +25,7 @@ export default function RemediationSlider({ ppnl, onRemediate }: { ppnl: any, on
       </div>
 
       <p className="text-gray-400 text-sm mb-6">
-        Adjust the reliance on biased proxy variables to observe real-time impact on the 4/5ths rule.
-        Lowering the weight reduces the model's dependence on that feature.
+        Adjust the reliance on biased proxy variables to observe real-time impact.
       </p>
 
       <div className="space-y-6">
@@ -42,16 +36,10 @@ export default function RemediationSlider({ ppnl, onRemediate }: { ppnl: any, on
               <span className="font-mono text-blue-300">{val.toFixed(2)}x</span>
             </div>
             <input 
-              type="range" 
-              min="0" max="1" step="0.05" 
-              value={val}
+              type="range" min="0" max="1" step="0.05" value={val}
               onChange={(e) => handleSliderChange(feat, parseFloat(e.target.value))}
               className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
             />
-            <div className="flex justify-between text-xs text-gray-500 mt-2">
-              <span>Ignored (0)</span>
-              <span>Full Weight (1)</span>
-            </div>
           </div>
         ))}
       </div>

@@ -1,47 +1,50 @@
 # Goal Description
 
-Develop SamFair, a modular Python library and a Next.js (React) dashboard for auditing AI recruitment tools for bias. The system provides a complete end-to-end flow: mock AEDT discovery, synthetic "golden set" data generation, bias auditing using the 4/5ths rule, explainability via a Post‑Prediction Neural Linker (PPNL), and a fully interactive frontend to visualize and remediate bias.
+Update the SamFair prototype to match the highly detailed architecture specification, integrating Firebase/Firestore for user data storage, adding Chart.js visualizations, refining the bias auditing algorithm, and providing a cohesive `run.sh` script for the demo flow.
 
 ## Open Questions
 
-- **Next.js Router:** The prompt indicates `src/pages/index.js`. Is it acceptable to use the Next.js Pages Router to match this structure, or would you prefer the newer App Router (`src/app/page.js`)? I will default to Pages Router to match the prompt exactly.
-- **Styling Details:** The prompt asks for premium, Karpathy-style design. I'll use standard Tailwind CSS with custom colors/gradients, but should I avoid any specific UI libraries (like shadcn/ui or MUI) and stick strictly to raw Tailwind?
+- **Next.js Router**: Our current scaffolding uses the Next.js App Router (`src/app/page.tsx`). Your spec mentions `pages/index.js`. I will adapt the components to work perfectly within the existing App Router setup unless you strictly prefer rebuilding it with the Pages Router.
+- **Firebase Auth**: Should I implement a mock/simple anonymous Firebase login before saving to Firestore, or just write directly to the database without auth rules for the hackathon prototype? (I will assume direct writes to Firestore are fine for the prototype).
 
 ## Proposed Changes
 
-### 1. Repository Initialization & Backend Setup
-- Initialize standard project structure `samfair/backend/` and `samfair/frontend/`.
-- Create `backend/requirements.txt` containing dependencies: `fastapi`, `uvicorn`, `pandas`, `scikit-learn`, `faker`, `playwright`, `joblib`, `reportlab`, `skope-rules` (optional, for succinct rules).
+### 1. Backend Updates (`samfair/backend/`)
+- **[MODIFY] `requirements.txt`**: Pin exact versions as requested (`fastapi==0.110.0`, `pandas==2.2.0`, etc.) and add `python-multipart`.
+- **[NEW] `mock_hr.html`**: Create the dummy HR page with `data-aedt` attributes.
+- **[NEW] `train_model.py`**: A revised training script that creates 10,000 samples and specifically injects intersectional bias against SC women and penalizes specific pin codes, saving to `biased_model.joblib`.
+- **[MODIFY] `samfair_lib/synthetic_data.py`**: Update to generate `university_tier`, `language_medium`, `pin_code` (biased), and encode `name_feat1`/`name_feat2`.
+- **[MODIFY] `samfair_lib/discovery.py`**: Update to read `data-name` and `data-endpoint`.
+- **[MODIFY] `samfair_lib/audit.py`**: Ensure it strictly flags ratios < 0.80 and calculates the intersectional slices specified.
+- **[MODIFY] `samfair_lib/ppnl.py`**: Ensure it outputs the exact dict format: `rule`, `group_impacted`, `surrogate_accuracy`, `feature_contributions`.
+- **[MODIFY] `samfair_lib/evidence.py`**: Update `log_audit` to hash and save to `audit_log.json`.
+- **[MODIFY] `samfair_lib/reports.py`**: Update `generate_report` to save to `/tmp/audit_report.pdf` (or local temp dir on Windows).
+- **[MODIFY] `app.py`**: 
+  - Add `POST /remediate` to recalculate metrics based on slider weights.
+  - Add `GET /download_report` to fetch the generated PDF.
+  - Add `GET /mock_hr.html` to serve the mock file.
 
-### 2. Python Library (`samfair/backend/samfair_lib/`)
-- **[NEW] `synthetic_data.py`**: Generate 1,000 synthetic Indian profiles. Inject protected attributes (gender, religion, caste proxy) and correlated benign features (name styles, universities, pin codes).
-- **[NEW] `discovery.py`**: Implement a mock Playwright scraper to "discover" AEDTs from an HR page.
-- **[NEW] `audit.py`**: Calculate selection rates and adverse impact ratios (4/5ths rule) for individual attributes and intersectional slices (e.g., Gender x Caste).
-- **[NEW] `ppnl.py`**: Train a surrogate `DecisionTreeClassifier` on non-protected features to explain the model's rejections. Extract decision paths as rules and calculate feature importance.
-- **[NEW] `evidence.py`**: Setup a simple SQLite or JSON logger that hashes audit runs and PPNL rules (SHA-256) for regulatory traceability.
-- **[NEW] `reports.py`**: Generate a PDF summarizing DPIA, audit results, PPNL rules, and synthetic data provenance using `reportlab`.
+### 2. Frontend Updates (`samfair/frontend/`)
+- **Dependencies**: Install `firebase`, `chart.js`, `react-chartjs-2`.
+- **[NEW] `src/lib/firebase.js`**: Initialize Firebase and Firestore. The API keys will be read from `.env.local` to remain BYOK (Bring Your Own Key), falling back to the provided keys if not set.
+- **[MODIFY] `src/app/page.tsx`**: Update state management for the new flow and integrate Firestore to log audit sessions.
+- **[MODIFY] `src/components/AedtDiscovery.tsx`**: Update UI to match the new endpoints.
+- **[MODIFY] `src/components/AuditResultGrid.tsx`**: Add Chart.js bar chart for impact ratios.
+- **[MODIFY] `src/components/PpnlExplainer.tsx`**: Add Chart.js horizontal bar chart for feature contributions.
+- **[MODIFY] `src/components/RemediationSlider.tsx`**: Add visual gauge and call `POST /remediate`.
 
-### 3. Biased Model Creation
-- **[NEW] `train_biased_model.py`**: A one-off script to generate a large dataset and train a `LogisticRegression` model with deliberate bias (e.g., rejecting specific pin codes or name styles correlated with SC/ST or Female/Muslim candidates).
-- Outputs: `biased_model.joblib`.
-
-### 4. FastAPI Server (`samfair/backend/app.py`)
-- **[NEW] `app.py`**: 
-  - Expose `/discover` to run Playwright discovery.
-  - Expose `/audit` to generate data, run predictions through `biased_model.joblib`, calculate impact ratios, run PPNL, and build the report.
-  - Expose `/hr-dashboard` (a tiny mock HTML endpoint for the Playwright scraper to find).
-
-### 5. Frontend Dashboard (`samfair/frontend/`)
-- Initialize Next.js project with Tailwind CSS.
-- **[NEW] `src/pages/index.js`**: Main layout assembling the 4 panels.
-- **[NEW] `src/components/AedtDiscovery.jsx`**: Input URL, scan, and list discovered endpoints.
-- **[NEW] `src/components/AuditResultGrid.jsx`**: Render the impact ratio table, an intersectional heatmap, and an overall gauge.
-- **[NEW] `src/components/PpnlExplainer.jsx`**: Show the extracted logical rules and feature importance charts.
-- **[NEW] `src/components/RemediationSlider.jsx`**: A slider to adjust the model's internal feature weights for the biased features, dynamically recalculating the audit results on the frontend to show remediation.
+### 3. Execution Script
+- **[NEW] `run.sh`**: Create the bash script to install dependencies, run `train_model.py`, start Uvicorn, and start Next.js dev server.
 
 ## Verification Plan
 
 ### Automated/Manual Testing
-1. **Backend Tests:** Manually trigger `/discover` and `/audit` via Swagger UI (`/docs`) to ensure the entire Python pipeline (Data -> Model -> Audit -> PPNL -> PDF) runs without errors and produces expected results.
-2. **Frontend Interactivity:** Start the Next.js dev server. Verify that the discovery scan works, the audit runs and renders the tables/charts, and the remediation slider dynamically changes the impact ratio gauges.
-3. **Report Generation:** Ensure the PDF report is created and can be downloaded from the UI.
+1. Execute `run.sh` (via bash on Windows/WSL) and verify both backend and frontend start cleanly.
+2. Follow the 9-step demo flow exactly:
+   - Scan `http://localhost:8000/mock_hr.html`.
+   - Run audit on AI Resume Screener.
+   - Verify SC Women are flagged RED.
+   - Click to view PPNL and verify Chart.js visualizations.
+   - Adjust the Remediation Slider and verify the gauge turns green.
+   - Download the PDF report.
+   - Check Firestore console to ensure the audit log was saved successfully.

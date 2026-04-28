@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 export default function AedtDiscovery({ onDiscovered }: { onDiscovered: (aedts: any[]) => void }) {
-  const [url, setUrl] = useState("http://localhost:8000/hr-dashboard");
+  const [url, setUrl] = useState("http://localhost:8000/mock_hr.html");
   const [loading, setLoading] = useState(false);
   const [tools, setTools] = useState<any[]>([]);
 
