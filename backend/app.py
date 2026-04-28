@@ -28,7 +28,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-api_router = APIRouter(prefix="/api")
+api_router = APIRouter(prefix="/_/backend")
 
 class DiscoverRequest(BaseModel):
     url: str
@@ -86,7 +86,7 @@ async def run_audit(req: AuditRequest):
         "seed": seed,
         "audit_results": results_df.to_dict(orient='records'),
         "ppnl": ppnl_output,
-        "report_path": "/api/download_report"
+        "report_path": "/_/backend/download_report"
     }
 
 @api_router.post("/remediate")
