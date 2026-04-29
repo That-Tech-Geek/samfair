@@ -150,28 +150,43 @@ export default function Home() {
                   if (tools.length > 0) toast.success(`Found ${tools.length} AEDT models`);
                 }} />
 
-                {aedts.length > 0 && (
-                  <div className="p-6 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl animate-in fade-in">
-                    <h3 className="text-xl font-bold text-white mb-4">Run Audit</h3>
-                    <select 
-                      className="w-full bg-black/40 text-white rounded-lg px-4 py-3 border border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4"
-                      onChange={e => setSelectedAedt(e.target.value)}
-                      value={selectedAedt}
-                    >
-                      <option value="" disabled>Select an AEDT...</option>
-                      {aedts.map(a => (
-                        <option key={a.endpoint} value={a.endpoint}>{a.name}</option>
-                      ))}
-                    </select>
-                    <button 
-                      onClick={handleAudit}
-                      disabled={!selectedAedt || auditing}
-                      className="w-full bg-white text-black hover:bg-gray-200 px-6 py-3 rounded-lg font-bold transition-all disabled:opacity-50"
-                    >
-                      {auditing ? "Auditing Model..." : "Commence Audit"}
-                    </button>
-                  </div>
-                )}
+                <div className="p-6 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/10 shadow-2xl animate-in fade-in">
+                  <h3 className="text-xl font-bold text-white mb-4">Run Audit</h3>
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Target AEDT API Endpoint</label>
+                      <input 
+                        type="url"
+                        className="w-full bg-black/40 text-white rounded-lg px-4 py-3 border border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        onChange={e => setSelectedAedt(e.target.value)}
+                        value={selectedAedt}
+                        placeholder="https://your-model.up.railway.app/predict"
+                      />
+                      <p className="text-xs text-gray-500 mt-2">Paste a custom API URL deployed on Railway, or select one from discovery.</p>
+                    </div>
+                    
+                    {aedts.length > 0 && (
+                      <div className="mb-4">
+                        <select 
+                          className="w-full bg-black/40 text-white rounded-lg px-4 py-3 border border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          onChange={e => setSelectedAedt(e.target.value)}
+                          value={selectedAedt}
+                        >
+                          <option value="" disabled>Or select from discovered...</option>
+                          {aedts.map(a => (
+                            <option key={a.endpoint} value={a.endpoint}>{a.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                  <button 
+                    onClick={handleAudit}
+                    disabled={!selectedAedt || auditing}
+                    className="w-full bg-white text-black hover:bg-gray-200 px-6 py-3 rounded-lg font-bold transition-all disabled:opacity-50"
+                  >
+                    {auditing ? "Auditing Model..." : "Commence Audit"}
+                  </button>
+                </div>
               </div>
 
               <div className="lg:col-span-2 space-y-8">

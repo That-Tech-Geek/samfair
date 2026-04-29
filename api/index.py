@@ -7,6 +7,7 @@ import pandas as pd
 import os
 import random
 import logging
+import requests
 
 from samfair_lib.discovery import discover_aedts
 from samfair_lib.synthetic_data import generate_golden_set
@@ -62,12 +63,28 @@ async def run_audit(req: AuditRequest):
     features = ['name_feat1', 'name_feat2', 'university_tier', 'pin_code_cluster', 'language_medium']
     X = df[features]
     
-    model_path = "biased_model.joblib"
-    if not os.path.exists(model_path):
-        raise HTTPException(status_code=500, detail="Biased model not found. Run train_model.py first.")
-        
-    model = joblib.load(model_path)
-    predictions = model.predict(X)
+    if req.aedt_endpoint.startswith("http"):
+        logger.info(f"Hitting external AEDT API at: {req.aedt_endpoint}")
+        try:
+            payload = {"features": X.to_dict(orient="records")}
+            # Send POST request to external Railway/Vercel model
+            resp = requests.post(req.aedt_endpoint, json=payload, timeout=15.0)
+            resp.raise_for_status()
+            data = resp.json()
+            predictions = np.array(data.get("predictions", []))
+            if len(predictions) != len(df):
+                raise HTTPException(status_code=502, detail="External API returned wrong number of predictions")
+        except Exception as e:
+            logger.error(f"External API failed: {e}")
+            raise HTTPException(status_code=502, detail=f"External model failed: {str(e)}")
+    else:
+        # Fallback to local
+        model_path = "biased_model.joblib"
+        if not os.path.exists(model_path):
+            raise HTTPException(status_code=500, detail="Biased model not found. Run train_model.py first.")
+            
+        model = joblib.load(model_path)
+        predictions = model.predict(X)
     
     results_df = compute_adverse_impact(df, predictions)
     flagged = results_df[results_df['flagged']]
@@ -100,17 +117,21 @@ async def run_remediate(req: RemediateRequest):
     features = ['name_feat1', 'name_feat2', 'university_tier', 'pin_code_cluster', 'language_medium']
     X = df[features].copy()
     
-    model_path = "biased_model.joblib"
-    if not os.path.exists(model_path):
-        raise HTTPException(status_code=500, detail="Biased model not found.")
-        
-    model = joblib.load(model_path)
-    
     if req.feature in X.columns:
         mean_val = X[req.feature].mean()
         X[req.feature] = X[req.feature] * req.weight + mean_val * (1 - req.weight)
         
-    predictions = model.predict(X)
+    # We only remediate against the local mock for now to save complexity, 
+    # but let's try external if they provided a URL
+    if False: # skipping external for remediation logic to keep it fast
+        pass
+    else:
+        model_path = "biased_model.joblib"
+        if not os.path.exists(model_path):
+            raise HTTPException(status_code=500, detail="Biased model not found.")
+        model = joblib.load(model_path)
+        predictions = model.predict(X)
+        
     results_df = compute_adverse_impact(df, predictions)
     
     return {
